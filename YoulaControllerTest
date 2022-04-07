@@ -1,0 +1,60 @@
+clc;clear;close;
+%Dynamics and Control p. 30
+g = 9.8;                     %Gravity Constant
+m = 3600/2.2;                %Vehicle Mass
+L = 7*.3048;                 %Wheelbase
+l_fl_r = 0.85;               %A/B Ratio
+alfaf_max = 7*pi/180;        %Design Limit
+alat_max = .7*g;             %Design Limit
+K_u = 1.1;                   %Understeer
+l_r = L/(1+l_fl_r);                            %CG Distance to Rear Wheel Center
+l_f = L-l_r;                                   %CG Distance to Front Wheel Center
+C_af = l_r/L*m*alat_max/alfaf_max;             %Cornering Stiffness, Front Tires
+C_ar = K_u*l_fl_r*C_af;                        %Cornering Stiffness, Rear Tires
+V_x = 20;                                      %Longitudinal Velocity [m/s]
+m = 3600/2.2;                                  %Vehicle Mass[kg]
+I_z = .5*m*l_f*l_r;                            %Vehicle Yaw Inertia
+
+%A Matrix Calculations
+A22 = -(2*C_af+2*C_ar)/(m*V_x);
+A24 = -V_x - (2*C_af*l_f-2*C_ar*l_r)/(m*V_x);
+A42 = -(2*C_af*l_f-2*C_ar*l_r)/(I_z*V_x);
+A44 = -(2*l_f^2*C_af+2*l_r^2*C_ar)/(I_z*V_x);
+
+%State Space Representation of Steering Controller
+% A = [0 1 0 0; 0 A22 0 A24; 0 0 0 1; 0 A42 0 A44];
+% B = [0; 2*C_af/m; 0; 2*l_f*C_af/I_z];
+% C = [0 0 0 1];
+% D = 0;
+A = [A22 A24;A42 A44];
+B=[2*C_af/m; 2*l_f*C_af/I_z];
+C=[0 1];
+D = 0;
+
+%State Space to Transfer Function
+[numGp,denGp] = ss2tf(A,B,C,D);
+TF_zeros = roots(numGp);
+TF_poles = roots(denGp);
+t = 0:0.01:5;
+u = 5*heaviside(t-.5);
+SYS = ss(A,B,C,D);
+lsim(SYS,u,t)
+
+syms s
+K = denGp(3)/(numGp(3)+denGp(3));
+tau = 0;
+% % Gp = poly2sym(num1,s)/poly2sym(den1,s);
+% % Y = (K / (tau*s+1)^2);
+% % T = Y*Gp;
+% % Gc = Y/(1-T);
+numGc = [K K*denGp(2) K*denGp(3)];
+denGc = [tau^2 tau^2*denGp(2)+2*tau tau^2*denGp(3)+2*tau*denGp(2)+1 2*tau*denGp(3)+denGp(2)-K*numGp(2) denGp(3)-K*numGp(3)];
+
+TF_Youla_num = conv(numGc,numGp);
+TF_Youla_den = conv(denGc,denGp);
+
+TF_Youla = tf(TF_Youla_num,TF_Youla_den);
+figure
+lsim(TF_Youla,u,t)
+
+%freqz([K*numGp(2) + K*numGp(3)],[tau^2 tau^2*denGp(2)+2*tau tau^2*denGp(3)+2*tau*denGp(2)+1 2*tau*denGp(3)+denGp(2) denGp(3)])
